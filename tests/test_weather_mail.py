@@ -76,7 +76,9 @@ try:
     pg_started = True
     env = os.environ | {
         "ASPNETCORE_ENVIRONMENT": "Development", "ASPNETCORE_URLS": url,
-        "CONNECTION_STRING": connection, "Database__MigrateOnStartup": "true",
+        "JWT_SECRET": "isolated-test-only-secret-32-characters-long-value",
+        "CONNECTION_STRING": "", "Database__MigrateOnStartup": "true",
+        "DATABASE_URL": '# Neon copy format\nDATABASE_URL="postgresql://postgres:unused@127.0.0.1:' + str(db_port) + '/postgres?sslmode=disable"\nDATABASE_URL_POOLED="postgresql://postgres:unused@127.0.0.1:1/postgres?sslmode=disable"',
         "Mail__Enabled": "true", "Mail__DeliveryMode": "Pickup", "Mail__PickupDirectory": str(MAILBOX),
         "Mail__ApiUrl": url, "Weather__ForecastUrl": f"http://127.0.0.1:{forecast_port}/forecast",
         "WeatherAdmin__Emails__0": "admin@example.test",

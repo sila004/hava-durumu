@@ -26,6 +26,11 @@ Bu dosya ek Render veritabanı oluşturmaz. Neon URL içindeki SSL ve channel bi
 ayarları korunur. Npgsql biçimindeki `CONNECTION_STRING` de desteklenir ve önceliklidir.
 Yerel `DB_*` alanlarını uzak sunucuya kopyalamayın.
 
+Neon'dan tırnaklı URL veya `DATABASE_URL="..."` satırı kopyalansa da bağlantı okunur.
+Doğrudan ve havuzlu adresler birlikte yapıştırılırsa doğrudan `DATABASE_URL` seçilir.
+Yıldızlarla gizlenmiş örnek yerine gerçek bağlantı adresi kullanılmalıdır.
+Geçersiz metin açılışta parola içermeyen bir açıklamayla reddedilir.
+
 İlk açılışta migration'lar uygulanır. `/health/ready` 200 döndüğünde API hazırdır.
 Yerel hesaplar otomatik taşınmaz; Neon ayrı bir veritabanıdır.
 

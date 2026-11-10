@@ -52,6 +52,35 @@ var neonConnection = new NpgsqlConnectionStringBuilder(RuntimeConnectionString.R
     ("DATABASE_URL", "postgresql://example_user:p%40ss%3Bword@ep-example.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"))));
 Check(neonConnection.Host == "ep-example.eu-central-1.aws.neon.tech" && neonConnection.Port == 5432 && neonConnection.Database == "neondb", "Neon URL sunucu ve veritabanını çözer");
 Check(neonConnection.Password == "p@ss;word" && neonConnection.SslMode == SslMode.Require && neonConnection.ChannelBinding == ChannelBinding.Require, "Neon parolası güvenle çözülür, SSL ve channel binding korunur");
+const string directNeonUrl = "postgresql://example_user:p%40ss%3Bword@ep-example.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require";
+var copiedFormats = new[]
+{
+    "\"" + directNeonUrl + "\"",
+    "'" + directNeonUrl + "'",
+    "DATABASE_URL=\"" + directNeonUrl + "\"",
+    "export DATABASE_URL='" + directNeonUrl + "'",
+    "\uFEFF  DATABASE_URL = \"" + directNeonUrl + "\"  ",
+    "# Postgres connection\nDATABASE_URL=\"" + directNeonUrl + "\"\nDATABASE_URL_POOLED=\"postgresql://example:unused@pooler.example.test/neondb\""
+};
+foreach (var copied in copiedFormats)
+{
+    var parsedCopy = new NpgsqlConnectionStringBuilder(RuntimeConnectionString.Resolve(ConnectionConfig(("DATABASE_URL", copied))));
+    Check(parsedCopy.Host == neonConnection.Host && parsedCopy.Password == neonConnection.Password &&
+        parsedCopy.SslMode == SslMode.Require && parsedCopy.ChannelBinding == ChannelBinding.Require,
+        "Neon kopyalama biçimi doğru adresi ve SSL ayarlarını korur");
+}
+foreach (var invalidCopy in new[] { "secret-marker", "DATABASE_URL=secret-marker", "https://example:secret-marker@example.test/db", "postgresql://example:********@example.test/db" })
+{
+    try
+    {
+        RuntimeConnectionString.Resolve(ConnectionConfig(("DATABASE_URL", invalidCopy)));
+        throw new Exception("Geçersiz bağlantı metni kabul edildi");
+    }
+    catch (InvalidOperationException error)
+    {
+        Check(!error.ToString().Contains("secret-marker") && error.InnerException is null, "Geçersiz bağlantı metni sırları loga taşımadan reddedilir");
+    }
+}
 Check(RuntimeConnectionString.Resolve(ConnectionConfig(("CONNECTION_STRING", "Host=localhost;Database=existing"), ("DATABASE_URL", "invalid"))) == "Host=localhost;Database=existing", "Mevcut CONNECTION_STRING önceliği korunur");
 var localConnection = new NpgsqlConnectionStringBuilder(RuntimeConnectionString.Resolve(ConnectionConfig(("DB_HOST", "localhost"), ("DB_NAME", "local"), ("DB_USERNAME", "example"), ("DB_PASSWORD", "example"))));
 Check(localConnection.Host == "localhost" && localConnection.Database == "local", "Yerel DB ayarları çalışmaya devam eder");
