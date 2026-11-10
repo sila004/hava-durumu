@@ -1,0 +1,34 @@
+# Ücretsiz Render API + ayrı Neon PostgreSQL. Blueprint kullanırken bu dosyayı seçin.
+services:
+  - type: web
+    name: meteoroloji-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health/ready
+    autoDeployTrigger: "off"
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ASPNETCORE_HTTP_PORTS
+        value: "10000"
+      - key: ASPNETCORE_HTTPS_PORT
+        value: "443"
+      - key: ReverseProxy__Enabled
+        value: "true"
+      - key: Features__EnableSampleControllers
+        value: "false"
+      - key: Database__MigrateOnStartup
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: Cors__AllowedOrigins__0
+        sync: false
+      - key: WeatherAdmin__Emails__0
+        sync: false
+      - key: Mail__Enabled
+        value: "false"
