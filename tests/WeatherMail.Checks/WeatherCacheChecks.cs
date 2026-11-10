@@ -104,6 +104,12 @@ internal static class WeatherCacheChecks
             "Yedek sağlayıcı yedi günü, 168 saati ve yerel güncel zamanı korur");
         check(mapped.Current.Pressure is null && mapped.Hourly.UvIndex.All(value => value is null),
             "Yedek sağlayıcıda olmayan yüzey basıncı ve UV verisi sıfır diye gösterilmez");
+        var missingRainJson = System.Text.Json.Nodes.JsonNode.Parse(fallbackPayload)!;
+        missingRainJson["currentConditions"]!["precip"] = null;
+        using var missingRainDocument = JsonDocument.Parse(missingRainJson.ToJsonString());
+        var missingRain = VisualCrossingForecast.Parse(missingRainDocument.RootElement);
+        check(missingRain.Current.Precipitation is null && missingRain.Current.Temperature == mapped.Current.Temperature && missingRain.Daily.Time.Length == 7,
+            "Güncel yağış miktarı boş geldiğinde diğer hava verileri ve yedi günlük tahmin kaybolmaz");
         check(mapped.Current.IsDay == 1 && mapped.Hourly.IsDay[0] == 0 && mapped.Hourly.IsDay[12] == 1,
             "Yedek sağlayıcının gece/gündüz bilgisi gün doğumu ve batımına göre hesaplanır");
         var limitedHoursJson = System.Text.Json.Nodes.JsonNode.Parse(fallbackPayload)!;
@@ -121,10 +127,12 @@ internal static class WeatherCacheChecks
         using var fallbackCache = new WeatherRequestCache(new TestClock());
         var primaryCalls = 0;
         var fallbackCalls = 0;
+        var requestedDisplayFields = false;
         using var fallbackHandler = new TestHandler((request, _) =>
         {
             if (request.RequestUri!.Host == "fallback.example.test")
             {
+                requestedDisplayFields = request.RequestUri.Query.Contains("elements=") && request.RequestUri.Query.Contains("sunrise,sunset,uvindex");
                 fallbackCalls++;
                 return Task.FromResult(Json(fallbackPayload));
             }
@@ -137,6 +145,7 @@ internal static class WeatherCacheChecks
         var fallbackResponses = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => fallbackService.GetForecastAsync("Ankara")));
         check(fallbackResponses.All(item => item.IsSuccess) && primaryCalls == 1 && fallbackCalls == 1,
             "Ana sağlayıcı 429 döndürürse yedek sağlayıcı bir kez çağrılır ve eşzamanlı istekler önbelleği kullanır");
+        check(requestedDisplayFields, "Gün doğumu, gün batımı ve UV alanları sağlayıcının değişebilen varsayılanlarına bırakılmaz");
         var fallbackCard = await fallbackService.GetWeatherAsync("Ankara");
         check(fallbackCard.IsSuccess && fallbackCard.Data.Temperature == mapped.Current.Temperature && fallbackCalls == 1,
             "Şehir kartı, karşılaştırma ve ayrıntılı tahmin aynı yedek veriyi kullanır");

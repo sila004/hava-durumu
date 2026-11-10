@@ -30,7 +30,7 @@ public static class VisualCrossingForecast
                 Time = currentTime, Temperature = Number(current, "temp"), Apparent = Number(current, "feelslike"),
                 Humidity = Number(current, "humidity"), Wind = Number(current, "windspeed"),
                 WindDirection = Number(current, "winddir"), Pressure = null,
-                Precipitation = Number(current, "precip"), CloudCover = Number(current, "cloudcover"),
+                Precipitation = OptionalNumber(current, "precip"), CloudCover = Number(current, "cloudcover"),
                 Code = Code(current), IsDay = IsDay(today, currentTime[11..])
             },
             Daily = new DailyWeatherDto

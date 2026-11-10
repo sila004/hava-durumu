@@ -20,7 +20,7 @@ public class CurrentWeatherDto
     [JsonPropertyName("wind_speed_10m")] public required double Wind { get; set; }
     [JsonPropertyName("wind_direction_10m")] public required double WindDirection { get; set; }
     [JsonPropertyName("surface_pressure")] public required double? Pressure { get; set; }
-    public required double Precipitation { get; set; }
+    public required double? Precipitation { get; set; }
     [JsonPropertyName("cloud_cover")] public required double CloudCover { get; set; }
     [JsonPropertyName("weather_code")] public required int Code { get; set; }
     [JsonPropertyName("is_day")] public required int IsDay { get; set; }

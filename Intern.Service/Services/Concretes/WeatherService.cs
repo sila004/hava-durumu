@@ -92,7 +92,9 @@ public class WeatherService : IWeatherService
         // Şehir listesi Türkiye'dedir; yalnız gereken yedi günlük aralık istenir.
         var today = DateOnly.FromDateTime(_cache.Now.AddHours(3).DateTime);
         var coordinates = FormattableString.Invariant($"{Math.Round(latitude, 3)},{Math.Round(longitude, 3)}");
-        var url = $"{_settings.FallbackForecastUrl.TrimEnd('/')}/{coordinates}/{today:yyyy-MM-dd}/{today.AddDays(6):yyyy-MM-dd}?unitGroup=metric&include=current,days,hours&contentType=json";
+        // Sağlayıcının varsayılan alan listesi değişebilir; ekranda kullanılan alanları açıkça isteriz.
+        const string elements = "datetime,datetimeEpoch,tzoffset,temp,tempmax,tempmin,feelslike,humidity,windspeed,winddir,precip,precipprob,cloudcover,conditions,icon,sunrise,sunset,uvindex";
+        var url = $"{_settings.FallbackForecastUrl.TrimEnd('/')}/{coordinates}/{today:yyyy-MM-dd}/{today.AddDays(6):yyyy-MM-dd}?unitGroup=metric&include=current,days,hours&contentType=json&elements={elements}";
         var authority = new Uri(url).GetLeftPart(UriPartial.Authority);
         if (_cache.TryGet<ForecastDto>(url, out var cached)) return Response<ForecastDto>.Success(cached!, 200);
         await _cache.RequestGate.WaitAsync(ct);
