@@ -3,6 +3,7 @@
 Sonra: python tests/test_weather_mail.py
 """
 import datetime as dt
+import copy
 import email.policy
 import email.parser
 import http.cookiejar
@@ -19,6 +20,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from weather_library_checks import check_library, check_library_isolation
 
 ROOT = Path(__file__).resolve().parents[1]
 PG_BIN = Path(os.environ.get("PG_BIN", "C:/Program Files/PostgreSQL/18/bin"))
@@ -92,6 +94,7 @@ try:
         "DATABASE_URL": '# Neon copy format\nDATABASE_URL="postgresql://postgres:unused@127.0.0.1:' + str(db_port) + '/postgres?sslmode=disable"\nDATABASE_URL_POOLED="postgresql://postgres:unused@127.0.0.1:1/postgres?sslmode=disable"',
         "Mail__Enabled": "true", "Mail__DeliveryMode": "Pickup", "Mail__PickupDirectory": str(MAILBOX),
         "Mail__ApiUrl": url, "Weather__ForecastUrl": f"http://127.0.0.1:{forecast_port}/forecast",
+        "Weather__EnableForecastFallback": "false",
         "WeatherAdmin__Emails__0": "admin@example.test",
         "WeatherAdmin__Emails__1": "ui-admin@example.test",
         "Cors__AllowedOrigins__0": "http://localhost:3000",
@@ -142,6 +145,11 @@ try:
     state, _ = request("/status")
     assert state["mailReady"] and state["developmentPickup"]
     request("/me", expected=401)
+    for path, method, data in [("/library", "GET", None), ("/favorites", "PUT", {"city": "Ankara"}),
+        ("/favorites/Ankara", "DELETE", None), ("/preferences/home", "PUT", {"city": "Ankara"}),
+        ("/comparisons", "GET", None), ("/comparisons", "POST", {"firstCity": "Ankara", "secondCity": "Bursa"}),
+        ("/comparisons", "DELETE", None)]:
+        request(path, method, data, expected=401)
     request("/request-code", "POST", {"email": "first@example.test"}, expected=403, custom_header=False)
     preview, _ = request("/preview")
     assert "Canlı tahmin değildir" in preview
@@ -166,6 +174,11 @@ try:
         admin_request(path, method, data, expected=403)
     request("/verify", "POST", {"challengeId": challenge["challengeId"], "code": code}, expected=400)
     request("/me")
+    check_library(request)
+    first_cookies = http.cookiejar.CookieJar()
+    for cookie in cookies:
+        first_cookies.set_cookie(copy.copy(cookie))
+    first_client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(first_cookies))
     request("/subscription", "PUT", {"city": "Ankara", "deliveryTime": "07:00", "dailyEnabled": True}, expected=403, custom_header=False)
     request("/subscription", "PUT", {"city": "Atlantis", "deliveryTime": "07:00", "dailyEnabled": True}, expected=400)
     request("/subscription", "PUT", {"city": "Ankara", "deliveryTime": "25:00", "dailyEnabled": True}, expected=400)
@@ -217,6 +230,14 @@ try:
     admin_challenge, _ = request("/request-code", "POST", {"email": "ADMIN@example.test"})
     admin_profile, _ = request("/verify", "POST", {"challengeId": admin_challenge["challengeId"], "code": read_code()})
     assert admin_profile["isAdmin"] and admin_profile["email"] == "admin@example.test"
+    check_library_isolation(request)
+    admin_client = client
+    client = first_client
+    assert request("/library")[0]["favorites"] == ["Bursa"]
+    assert request("/library")[0]["preferences"]["map"] == "Ankara"
+    assert len(request("/comparisons")[0]) == 50
+    print("PASS kalıcılık: API yeniden başladıktan sonra oturum, favoriler, tercihler ve geçmiş korunur")
+    client = admin_client
     summary, headers = admin_request("/overview")
     assert summary["totalAccounts"] == 2 and summary["activeSubscriptions"] == 0 and "no-store" in headers.get("Cache-Control", "")
     assert summary["sentToday"] == 0 and summary["failedToday"] == 0
@@ -264,13 +285,16 @@ try:
     print("PASS admin: arama, filtre, sayfalama doğrulama, abonelik düzenleme, geçmiş ve yeniden deneme sınırları")
     request("/api/hava-durumu?city=Ankara", prefix="")  # Admin senaryosu öncesi host yeniden başlatıldığı için önbelleği burada doldur.
     ForecastHandler.limited = True
+    history_before_failure = request("/comparisons")[0]
+    request("/comparisons", "POST", {"firstCity": "Van", "secondCity": "Bursa"}, expected=503)
+    assert request("/comparisons")[0] == history_before_failure
     before_limit = ForecastHandler.requests_received
-    limited, limited_headers = request("/api/hava-durumu/tahmin?city=Bursa", expected=503, prefix="")
+    limited, limited_headers = request("/api/hava-durumu/tahmin?city=Adana", expected=503, prefix="")
     assert limited["error"]["code"] == "WeatherProviderRateLimited" and limited_headers.get("Retry-After") == "120"
     request("/api/hava-durumu?city=İzmir".replace("İ", "%C4%B0"), expected=503, prefix="")
-    assert ForecastHandler.requests_received == before_limit + 1
+    assert ForecastHandler.requests_received == before_limit
     request("/api/hava-durumu?city=Ankara", prefix="")  # Önceki başarılı test mailinin tahmini hâlâ önbellekte.
-    assert ForecastHandler.requests_received == before_limit + 1
+    assert ForecastHandler.requests_received == before_limit
     print("PASS sağlayıcı 429: HTTP 503/Retry-After, şehirler arası bekleme ve başarılı tahminin önbellekten sunulması")
     ForecastHandler.limited = False
     print("PASS giriş, HttpOnly oturum, yeniden kod, yanlış kod, tekrar kullanım, 5 deneme sınırı")

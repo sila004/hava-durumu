@@ -118,6 +118,82 @@ namespace Intern.Data.Migrations
                     b.ToTable("Employees");
                 });
 
+            modelBuilder.Entity("Intern.Entities.Concretes.WeatherComparison", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ComparedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<double>("FirstApparent")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("FirstCity")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<int>("FirstCode")
+                        .HasColumnType("integer");
+
+                    b.Property<double>("FirstHumidity")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("FirstTemperature")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("FirstWind")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("SecondApparent")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("SecondCity")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<int>("SecondCode")
+                        .HasColumnType("integer");
+
+                    b.Property<double>("SecondHumidity")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("SecondTemperature")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("SecondWind")
+                        .HasColumnType("double precision");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId", "ComparedUtc");
+
+                    b.ToTable("WeatherComparisons");
+                });
+
+            modelBuilder.Entity("Intern.Entities.Concretes.WeatherFavorite", b =>
+                {
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("City")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("AccountId", "City");
+
+                    b.ToTable("WeatherFavorites");
+                });
+
             modelBuilder.Entity("Intern.Entities.Concretes.WeatherLoginChallenge", b =>
                 {
                     b.Property<Guid>("Id")
@@ -241,6 +317,28 @@ namespace Intern.Data.Migrations
                     b.ToTable("WeatherMailDeliveries");
                 });
 
+            modelBuilder.Entity("Intern.Entities.Concretes.WeatherPagePreference", b =>
+                {
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Section")
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<string>("City")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset>("UpdatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("AccountId", "Section");
+
+                    b.ToTable("WeatherPagePreferences");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey", b =>
                 {
                     b.Property<int>("Id")
@@ -260,7 +358,34 @@ namespace Intern.Data.Migrations
                     b.ToTable("DataProtectionKeys");
                 });
 
+            modelBuilder.Entity("Intern.Entities.Concretes.WeatherComparison", b =>
+                {
+                    b.HasOne("Intern.Entities.Concretes.WeatherMailAccount", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Intern.Entities.Concretes.WeatherFavorite", b =>
+                {
+                    b.HasOne("Intern.Entities.Concretes.WeatherMailAccount", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Intern.Entities.Concretes.WeatherMailDelivery", b =>
+                {
+                    b.HasOne("Intern.Entities.Concretes.WeatherMailAccount", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Intern.Entities.Concretes.WeatherPagePreference", b =>
                 {
                     b.HasOne("Intern.Entities.Concretes.WeatherMailAccount", null)
                         .WithMany()

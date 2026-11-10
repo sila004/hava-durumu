@@ -8,4 +8,6 @@ public class WeatherSettings
     public int TimeoutSeconds { get; set; } = 15;
     public int CacheSeconds { get; set; } = 600;
     public int RateLimitBackoffSeconds { get; set; } = 300;
+    public bool EnableForecastFallback { get; set; } = true;
+    public string FallbackForecastUrl { get; set; } = "https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline";
 }

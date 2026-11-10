@@ -19,7 +19,7 @@ internal static class WeatherCacheChecks
         var settings = Options.Create(new WeatherSettings
         {
             ForecastUrl = "https://forecast.example.test/forecast", AirQualityUrl = "https://air.example.test/air",
-            CacheSeconds = 600, RateLimitBackoffSeconds = 300
+            CacheSeconds = 600, RateLimitBackoffSeconds = 300, EnableForecastFallback = false
         });
         var clock = new TestClock();
         using var cache = new WeatherRequestCache(clock);
@@ -96,6 +96,90 @@ internal static class WeatherCacheChecks
         var invalid = await invalidService.GetForecastAsync("Ankara");
         var valid = await invalidService.GetForecastAsync("Ankara");
         check(invalid.StatusCode == 502 && valid.IsSuccess && invalidHandler.Calls == 2, "Eksik veya bozuk tahmin başarılı veri gibi önbelleğe alınmaz");
+
+        var fallbackPayload = FallbackPayload();
+        using var fallbackDocument = JsonDocument.Parse(fallbackPayload);
+        var mapped = VisualCrossingForecast.Parse(fallbackDocument.RootElement);
+        check(mapped.Daily.Time.Length == 7 && mapped.Hourly.Time.Length == 168 && mapped.Current.Time == "2026-11-10T12:00",
+            "Yedek sağlayıcı yedi günü, 168 saati ve yerel güncel zamanı korur");
+        check(mapped.Current.Pressure is null && mapped.Hourly.UvIndex.All(value => value is null),
+            "Yedek sağlayıcıda olmayan yüzey basıncı ve UV verisi sıfır diye gösterilmez");
+        check(mapped.Current.IsDay == 1 && mapped.Hourly.IsDay[0] == 0 && mapped.Hourly.IsDay[12] == 1,
+            "Yedek sağlayıcının gece/gündüz bilgisi gün doğumu ve batımına göre hesaplanır");
+        var limitedHoursJson = System.Text.Json.Nodes.JsonNode.Parse(fallbackPayload)!;
+        foreach (var day in limitedHoursJson["days"]!.AsArray().Skip(2)) day!.AsObject().Remove("hours");
+        using var limitedHoursDocument = JsonDocument.Parse(limitedHoursJson.ToJsonString());
+        var limitedHours = VisualCrossingForecast.Parse(limitedHoursDocument.RootElement);
+        check(limitedHours.Daily.Time.Length == 7 && limitedHours.Hourly.Time.Length == 48,
+            "Saatlik erişim ilk iki günle sınırlı olsa da yedi günlük tahmin korunur; eksik saatler uydurulmaz");
+
+        var fallbackSettings = Options.Create(new WeatherSettings
+        {
+            ForecastUrl = "https://forecast.example.test/forecast",
+            FallbackForecastUrl = "https://fallback.example.test/timeline"
+        });
+        using var fallbackCache = new WeatherRequestCache(new TestClock());
+        var primaryCalls = 0;
+        var fallbackCalls = 0;
+        using var fallbackHandler = new TestHandler((request, _) =>
+        {
+            if (request.RequestUri!.Host == "fallback.example.test")
+            {
+                fallbackCalls++;
+                return Task.FromResult(Json(fallbackPayload));
+            }
+            primaryCalls++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+                { Headers = { RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromHours(12)) } });
+        });
+        var fallbackService = new WeatherService(new TestFactory(fallbackHandler), fallbackSettings,
+            NullLogger<WeatherService>.Instance, fallbackCache);
+        var fallbackResponses = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => fallbackService.GetForecastAsync("Ankara")));
+        check(fallbackResponses.All(item => item.IsSuccess) && primaryCalls == 1 && fallbackCalls == 1,
+            "Ana sağlayıcı 429 döndürürse yedek sağlayıcı bir kez çağrılır ve eşzamanlı istekler önbelleği kullanır");
+        var fallbackCard = await fallbackService.GetWeatherAsync("Ankara");
+        check(fallbackCard.IsSuccess && fallbackCard.Data.Temperature == mapped.Current.Temperature && fallbackCalls == 1,
+            "Şehir kartı, karşılaştırma ve ayrıntılı tahmin aynı yedek veriyi kullanır");
+        var beforeInvalidCity = fallbackHandler.Calls;
+        var invalidCity = await fallbackService.GetForecastAsync("Atlantis");
+        check(invalidCity.StatusCode == 404 && fallbackHandler.Calls == beforeInvalidCity,
+            "Geçersiz şehir yedek sağlayıcıya gönderilmez");
+
+        using var bothLimitedCache = new WeatherRequestCache(new TestClock());
+        using var bothLimitedHandler = new TestHandler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            { Headers = { RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(90)) } }));
+        var bothLimited = new WeatherService(new TestFactory(bothLimitedHandler), fallbackSettings,
+            NullLogger<WeatherService>.Instance, bothLimitedCache);
+        var bothLimitedResponse = await bothLimited.GetForecastAsync("Ankara");
+        await bothLimited.GetForecastAsync("Bursa");
+        check(bothLimitedResponse.StatusCode == 503 && bothLimitedResponse.Error.Params["retryAfterSeconds"] == "90" && bothLimitedHandler.Calls == 2,
+            "Her iki sağlayıcının istek sınırı da korunur; şehir değiştirerek tekrar istek gönderilmez");
+    }
+
+    private static string FallbackPayload()
+    {
+        var days = Enumerable.Range(0, 7).Select(index => new
+        {
+            datetime = new DateOnly(2026, 11, 10).AddDays(index).ToString("yyyy-MM-dd"),
+            tempmax = 20, tempmin = 10, precipprob = 20,
+            sunrise = "07:00:00", sunset = "17:00:00", icon = "partly-cloudy-day", conditions = "Partially cloudy",
+            hours = Enumerable.Range(0, 24).Select(hour => new
+            {
+                datetime = $"{hour:D2}:00:00", temp = 15, feelslike = 14, humidity = 65, windspeed = 8,
+                precipprob = 20, precip = 0, icon = "partly-cloudy-day", conditions = "Partially cloudy", uvindex = (double?)null
+            })
+        });
+        return JsonSerializer.Serialize(new
+        {
+            timezone = "Europe/Istanbul", tzoffset = 3,
+            currentConditions = new
+            {
+                datetimeEpoch = new DateTimeOffset(2026, 11, 10, 9, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds(),
+                temp = 15, feelslike = 14, humidity = 65, windspeed = 8, winddir = 40,
+                precip = 0, cloudcover = 20, pressure = 1013, icon = "partly-cloudy-day", conditions = "Partially cloudy"
+            },
+            days
+        });
     }
 
     private static HttpResponseMessage Json(string body) => new(HttpStatusCode.OK)

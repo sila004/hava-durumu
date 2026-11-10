@@ -67,15 +67,64 @@ public class WeatherService : IWeatherService
         }, 200);
     }
 
-    public Task<Response<ForecastDto>> GetForecastAsync(string? city, CancellationToken ct = default,
-        double? latitude = null, double? longitude = null) =>
-        FetchAsync<ForecastDto>(city, _settings.ForecastUrl,
+    public async Task<Response<ForecastDto>> GetForecastAsync(string? city, CancellationToken ct = default,
+        double? latitude = null, double? longitude = null)
+    {
+        var primary = await FetchAsync<ForecastDto>(city, _settings.ForecastUrl,
             "current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,surface_pressure,precipitation,cloud_cover,weather_code,is_day" +
             "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset" +
             "&hourly=temperature_2m,apparent_temperature,weather_code,precipitation_probability,precipitation,wind_speed_10m,relative_humidity_2m,is_day,uv_index&forecast_days=7",
             data => data.Current is not null && data.Daily is not null && data.Hourly is not null &&
                 data.Daily.Time is { Length: > 0 } && data.Hourly.Time is { Length: > 0 },
             "Hava durumu alınamadı.", ct, latitude, longitude);
+        if (primary.IsSuccess || primary.StatusCode < 500 || !_settings.EnableForecastFallback) return primary;
+        if (!latitude.HasValue || !longitude.HasValue)
+        {
+            var location = Cities.First(item => string.Equals(item.Name.ToLower(TurkishCulture), city!.Trim().ToLower(TurkishCulture), StringComparison.Ordinal));
+            latitude = location.Lat;
+            longitude = location.Lon;
+        }
+        return await FetchFallbackAsync(latitude.Value, longitude.Value, ct);
+    }
+
+    private async Task<Response<ForecastDto>> FetchFallbackAsync(double latitude, double longitude, CancellationToken ct)
+    {
+        // Şehir listesi Türkiye'dedir; yalnız gereken yedi günlük aralık istenir.
+        var today = DateOnly.FromDateTime(_cache.Now.AddHours(3).DateTime);
+        var coordinates = FormattableString.Invariant($"{Math.Round(latitude, 3)},{Math.Round(longitude, 3)}");
+        var url = $"{_settings.FallbackForecastUrl.TrimEnd('/')}/{coordinates}/{today:yyyy-MM-dd}/{today.AddDays(6):yyyy-MM-dd}?unitGroup=metric&include=current,days,hours&contentType=json";
+        var authority = new Uri(url).GetLeftPart(UriPartial.Authority);
+        if (_cache.TryGet<ForecastDto>(url, out var cached)) return Response<ForecastDto>.Success(cached!, 200);
+        await _cache.RequestGate.WaitAsync(ct);
+        try
+        {
+            if (_cache.TryGet<ForecastDto>(url, out cached)) return Response<ForecastDto>.Success(cached!, 200);
+            var remaining = _cache.RemainingBackoff(authority);
+            if (remaining > TimeSpan.Zero) return RateLimited<ForecastDto>(remaining);
+            using var client = _httpClientFactory.CreateClient(HttpClientName);
+            using var response = await client.GetAsync(url, ct);
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                var wait = response.Headers.RetryAfter?.Delta ?? (response.Headers.RetryAfter?.Date - _cache.Now) ??
+                    TimeSpan.FromSeconds(Math.Max(1, _settings.RateLimitBackoffSeconds));
+                if (wait <= TimeSpan.Zero) wait = TimeSpan.FromSeconds(Math.Max(1, _settings.RateLimitBackoffSeconds));
+                _cache.SetBackoff(authority, wait);
+                return RateLimited<ForecastDto>(wait);
+            }
+            response.EnsureSuccessStatusCode();
+            using var payload = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+            var data = VisualCrossingForecast.Parse(payload.RootElement);
+            _cache.Store(url, data, TimeSpan.FromSeconds(Math.Clamp(_settings.CacheSeconds, 1, 3600)));
+            return Response<ForecastDto>.Success(data, 200);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or OperationCanceledException or InvalidOperationException or FormatException or ArgumentOutOfRangeException or KeyNotFoundException)
+        {
+            _logger.LogWarning("Yedek hava sağlayıcısı yanıt veremedi. Hata türü: {Type}", ex.GetType().Name);
+            return Response<ForecastDto>.Fail("WeatherProviderUnavailable", "Hava durumu alınamadı. Lütfen biraz sonra tekrar dene.", 502, true);
+        }
+        finally { _cache.RequestGate.Release(); }
+    }
 
     public async Task<Response<AirQualityDto>> GetAirQualityAsync(string? city, CancellationToken ct = default)
     {

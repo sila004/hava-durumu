@@ -22,12 +22,37 @@ namespace Intern.Data
         public DbSet<WeatherMailAccount> WeatherMailAccounts { get; set; }
         public DbSet<WeatherLoginChallenge> WeatherLoginChallenges { get; set; }
         public DbSet<WeatherMailDelivery> WeatherMailDeliveries { get; set; }
+        public DbSet<WeatherFavorite> WeatherFavorites { get; set; }
+        public DbSet<WeatherPagePreference> WeatherPagePreferences { get; set; }
+        public DbSet<WeatherComparison> WeatherComparisons { get; set; }
         public DbSet<DataProtectionKey> DataProtectionKeys { get; set; }
         // Yeni tabloları buraya ekleyin
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<WeatherFavorite>(entity =>
+            {
+                entity.HasKey(x => new { x.AccountId, x.City });
+                entity.Property(x => x.City).HasMaxLength(80).IsRequired();
+                entity.HasOne<WeatherMailAccount>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Cascade);
+            });
+            modelBuilder.Entity<WeatherPagePreference>(entity =>
+            {
+                entity.HasKey(x => new { x.AccountId, x.Section });
+                entity.Property(x => x.Section).HasMaxLength(24).IsRequired();
+                entity.Property(x => x.City).HasMaxLength(80).IsRequired();
+                entity.HasOne<WeatherMailAccount>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Cascade);
+            });
+            modelBuilder.Entity<WeatherComparison>(entity =>
+            {
+                entity.HasKey(x => x.Id);
+                entity.Property(x => x.FirstCity).HasMaxLength(80).IsRequired();
+                entity.Property(x => x.SecondCity).HasMaxLength(80).IsRequired();
+                entity.HasIndex(x => new { x.AccountId, x.ComparedUtc });
+                entity.HasOne<WeatherMailAccount>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Cascade);
+            });
 
             modelBuilder.Entity<WeatherMailAccount>(entity =>
             {

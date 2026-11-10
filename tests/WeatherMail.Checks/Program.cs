@@ -17,6 +17,14 @@ using System.Net.Mail;
 using Intern.API.Infrastructure;
 using Npgsql;
 
+if (args.Length == 2 && args[0] == "--forecast-sample")
+{
+    using var json = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(args[1]));
+    var sample = Intern.Service.Services.Concretes.VisualCrossingForecast.Parse(json.RootElement);
+    Console.WriteLine($"FORECAST_SAMPLE_OK days={sample.Daily.Time.Length} hours={sample.Hourly.Time.Length} timezone={sample.Timezone}");
+    return;
+}
+
 // Yalnız açıkça istenen elle kurulum testi: alıcı da yapılandırılmış gönderici hesabıdır.
 // Parola, adres veya ham SMTP yanıtı konsola yazılmaz.
 if (args.Contains("--smtp-test"))

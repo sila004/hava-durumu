@@ -19,7 +19,7 @@ public class CurrentWeatherDto
     [JsonPropertyName("relative_humidity_2m")] public required double Humidity { get; set; }
     [JsonPropertyName("wind_speed_10m")] public required double Wind { get; set; }
     [JsonPropertyName("wind_direction_10m")] public required double WindDirection { get; set; }
-    [JsonPropertyName("surface_pressure")] public required double Pressure { get; set; }
+    [JsonPropertyName("surface_pressure")] public required double? Pressure { get; set; }
     public required double Precipitation { get; set; }
     [JsonPropertyName("cloud_cover")] public required double CloudCover { get; set; }
     [JsonPropertyName("weather_code")] public required int Code { get; set; }
@@ -48,5 +48,5 @@ public class HourlyWeatherDto
     [JsonPropertyName("wind_speed_10m")] public required double[] Wind { get; set; }
     [JsonPropertyName("relative_humidity_2m")] public required double[] Humidity { get; set; }
     [JsonPropertyName("is_day")] public required int[] IsDay { get; set; }
-    [JsonPropertyName("uv_index")] public required double[] UvIndex { get; set; }
+    [JsonPropertyName("uv_index")] public required double?[] UvIndex { get; set; }
 }

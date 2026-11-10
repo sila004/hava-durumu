@@ -87,7 +87,7 @@ public static class WeatherEmailTemplate
         <p style="color:#617795;font-size:12px;text-align:center">Gün doğumu <strong>{E(sunrise.Length >= 16 ? sunrise[11..16] : "—")}</strong> &nbsp; · &nbsp; Gün batımı <strong>{E(sunset.Length >= 16 ? sunset[11..16] : "—")}</strong></p>
         <div style="padding:18px 20px;border:1px solid #d5e3df;border-radius:12px;background:#f1f8f4;margin:22px 0"><strong style="font-size:13px;color:#376b58">Günün notu</strong><p style="margin:8px 0 0;color:#54716b;line-height:1.8;font-size:13px">{E(note)}</p></div>
         <p style="text-align:center;margin:28px 0"><a href="{E(settings.FrontendUrl)}" style="display:inline-block;padding:15px 25px;background:#294b7b;color:#ffffff;border-radius:10px;text-decoration:none;font-size:13px;font-weight:bold">Saatlik tahminleri incele ↗</a></p>
-        <p style="font-size:11px;color:#78899e;line-height:1.8;text-align:center">Veri kaynağı: Open-Meteo. Tahminler değişebilir.<br>{footer}</p>
+        <p style="font-size:11px;color:#78899e;line-height:1.8;text-align:center">Veri kaynakları: <a href="https://open-meteo.com/">Open-Meteo</a> · <a href="https://www.visualcrossing.com/">Visual Crossing Weather</a>. Tahminler değişebilir.<br>{footer}</p>
         """, settings);
     }
 

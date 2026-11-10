@@ -212,6 +212,9 @@ builder.Services.AddHttpClient(WeatherService.HttpClientName, (sp, client) =>
 {
     var settings = sp.GetRequiredService<IOptions<WeatherSettings>>().Value;
     client.Timeout = TimeSpan.FromSeconds(settings.TimeoutSeconds);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate | System.Net.DecompressionMethods.Brotli
 });
 
 // Veritabanı
