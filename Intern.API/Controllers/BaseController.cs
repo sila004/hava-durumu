@@ -8,6 +8,13 @@ namespace Intern.API.Controllers
     {
         public IActionResult ActionResultInstance<T>(Response<T> response) where T : class
         {
+            if (response.Error?.Code == "WeatherProviderRateLimited" &&
+                response.Error.Params?.TryGetValue("retryAfterSeconds", out var retryAfter) == true &&
+                long.TryParse(retryAfter, out var seconds) && seconds > 0)
+            {
+                Response.Headers["Retry-After"] = retryAfter;
+                Response.Headers["Cache-Control"] = "no-store";
+            }
 
             if (response.StatusCode == (int)HttpStatusCode.NoContent)
                 return NoContent();

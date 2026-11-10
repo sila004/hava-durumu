@@ -93,6 +93,7 @@ catch (InvalidOperationException error)
 {
     Check(!error.ToString().Contains("secret-marker"), "Bağlantı hatası parolayı açığa çıkarmaz");
 }
+await WeatherCacheChecks.RunAsync(Check);
 var morning = new DateTimeOffset(2026, 11, 4, 4, 0, 0, TimeSpan.Zero);
 Check(!DailyMailSchedule.IsDue(true, 420, null, null, null, morning.AddSeconds(-1)), "07:00 öncesi gönderme");
 Check(DailyMailSchedule.IsDue(true, 420, null, null, null, morning), "Türkiye saatiyle 07:00 gönderimi");

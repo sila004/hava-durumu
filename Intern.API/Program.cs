@@ -80,6 +80,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddHttpContextAccessor();
 // Dış API yanıtlarını kısa süre önbelleğe almak için hazır.
 builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+builder.Services.AddSingleton<WeatherRequestCache>();
 
 // Swagger (sağ üstte Bearer token girişi ile)
 builder.Services.AddEndpointsApiExplorer();

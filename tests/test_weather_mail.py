@@ -38,7 +38,18 @@ def command(args, **kwargs):
 
 
 class ForecastHandler(http.server.BaseHTTPRequestHandler):
+    limited = False
+    requests_received = 0
+
     def do_GET(self):
+        type(self).requests_received += 1
+        if type(self).limited:
+            self.send_response(429)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Retry-After", "120")
+            self.end_headers()
+            self.wfile.write(b'{"error":true,"reason":"Test rate limit"}')
+            return
         day = (dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=3)).date().isoformat()
         result = {
             "timezone": "Europe/Istanbul",
@@ -251,6 +262,17 @@ try:
     admin_request("/accounts/00000000-0000-0000-0000-000000000099/retry", "POST", expected=404)
     print("PASS admin: anonim 401, normal hesap 403, yönetici erişimi, no-store ve gizli alanların dışlanması")
     print("PASS admin: arama, filtre, sayfalama doğrulama, abonelik düzenleme, geçmiş ve yeniden deneme sınırları")
+    request("/api/hava-durumu?city=Ankara", prefix="")  # Admin senaryosu öncesi host yeniden başlatıldığı için önbelleği burada doldur.
+    ForecastHandler.limited = True
+    before_limit = ForecastHandler.requests_received
+    limited, limited_headers = request("/api/hava-durumu/tahmin?city=Bursa", expected=503, prefix="")
+    assert limited["error"]["code"] == "WeatherProviderRateLimited" and limited_headers.get("Retry-After") == "120"
+    request("/api/hava-durumu?city=İzmir".replace("İ", "%C4%B0"), expected=503, prefix="")
+    assert ForecastHandler.requests_received == before_limit + 1
+    request("/api/hava-durumu?city=Ankara", prefix="")  # Önceki başarılı test mailinin tahmini hâlâ önbellekte.
+    assert ForecastHandler.requests_received == before_limit + 1
+    print("PASS sağlayıcı 429: HTTP 503/Retry-After, şehirler arası bekleme ve başarılı tahminin önbellekten sunulması")
+    ForecastHandler.limited = False
     print("PASS giriş, HttpOnly oturum, yeniden kod, yanlış kod, tekrar kullanım, 5 deneme sınırı")
     print("PASS şehir/saat doğrulama, test maili, iptal onayı, çıkış ve yetkisiz erişim")
     checks = command(["dotnet", "run", "--project", ROOT / "tests/WeatherMail.Checks", "--no-build"],

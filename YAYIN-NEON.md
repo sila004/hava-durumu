@@ -52,4 +52,21 @@ planda kullanılamaz. Mail ile giriş/Yönetim Merkezi ve günlük mail için HT
 kurulumu ayrıca tamamlanmalıdır. Günlük işçi uyuyan sunucuda çalışmaz; ücretsiz planda
 tam saat garantisi yoktur. Yalnız ön yüzün yayına alınması bu özellikleri çalıştırmaz.
 
+## Hava sağlayıcısının 429 sınırı
+
+Başarılı hava durumu ve hava kalitesi yanıtları varsayılan 10 dakika önbellekte tutulur.
+Aynı şehir için eşzamanlı kart istekleri tek sağlayıcı çağrısını paylaşır; sağlayıcıya
+aynı anda en fazla bir istek gönderilir. Ayar: `Weather__CacheSeconds` (varsayılan 600).
+
+Sağlayıcı 429 döndürürse `Retry-After` süresine uyulur. Başlık yoksa
+`Weather__RateLimitBackoffSeconds` (varsayılan 300 saniye) beklenir. Bu sırada aynı
+sağlayıcı adresine başka şehirler için de yeni istek gönderilmez. Başarılı ve süresi
+dolmamış önbellek yanıtları sunulmaya devam eder; veri yoksa API açık hata açıklamasıyla
+503 ve `Retry-After` döndürür. Hava kalitesinin ayrı sağlayıcı adresi engellenmez.
+
+Önbellek sağlayıcının uyguladığı mevcut kotayı kaldırmaz. Özellikle ilk açılışta
+hiç başarılı veri yoksa kota açılana kadar tahmin gösterilemez. Başarısız yanıtlar tahmin
+olarak kaydedilmez ve bekleme sırasında otomatik yeniden deneme döngüsü çalıştırılmaz.
+Sağlayıcı koşulları: https://open-meteo.com/en/terms
+
 Resmî kaynaklar: https://render.com/docs/free ve https://vercel.com/docs/deployments

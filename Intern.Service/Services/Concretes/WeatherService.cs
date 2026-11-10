@@ -10,6 +10,7 @@
 
 
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Intern.Entities.DTOs.Weather;
@@ -41,13 +42,15 @@ public class WeatherService : IWeatherService
     public static IReadOnlyList<string> CityNames => Cities.Select(city => city.Name).ToArray();
     private readonly WeatherSettings _settings;
     private readonly ILogger<WeatherService> _logger;
+    private readonly WeatherRequestCache _cache;
 
     public WeatherService(IHttpClientFactory httpClientFactory, IOptions<WeatherSettings> settings,
-        ILogger<WeatherService> logger)
+        ILogger<WeatherService> logger, WeatherRequestCache cache)
     {
         _httpClientFactory = httpClientFactory;
         _settings = settings.Value;
         _logger = logger;
+        _cache = cache;
     }
 
     public async Task<Response<WeatherDto>> GetWeatherAsync(string? city, CancellationToken ct = default)
@@ -132,14 +135,36 @@ public class WeatherService : IWeatherService
         var coordinates = FormattableString.Invariant($"latitude={lat}&longitude={lon}");
         var timezone = useCoordinates ? "auto" : "Europe%2FIstanbul";
         var requestUrl = $"{url}?{coordinates}&{fields}&timezone={timezone}";
+        var authority = new Uri(url).GetLeftPart(UriPartial.Authority);
 
+        ct.ThrowIfCancellationRequested();
+        if (_cache.TryGet<T>(requestUrl, out var cached)) return Response<T>.Success(cached!, 200);
+        // Aynı anda açılan kartlar ve farklı kullanıcılar sağlayıcıya paralel yük bindirmez.
+        await _cache.RequestGate.WaitAsync(ct);
         try
         {
+            if (_cache.TryGet<T>(requestUrl, out cached)) return Response<T>.Success(cached!, 200);
+            var remaining = _cache.RemainingBackoff(authority);
+            if (remaining > TimeSpan.Zero) return RateLimited<T>(remaining);
+
             using var client = _httpClientFactory.CreateClient(HttpClientName);
-            var data = await client.GetFromJsonAsync<T>(requestUrl, ct);
+            using var response = await client.GetAsync(requestUrl, ct);
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                var retryAfter = response.Headers.RetryAfter;
+                var wait = retryAfter?.Delta ?? (retryAfter?.Date - _cache.Now) ??
+                    TimeSpan.FromSeconds(Math.Max(1, _settings.RateLimitBackoffSeconds));
+                if (wait <= TimeSpan.Zero) wait = TimeSpan.FromSeconds(Math.Max(1, _settings.RateLimitBackoffSeconds));
+                _cache.SetBackoff(authority, wait);
+                _logger.LogWarning("Open-Meteo istek sınırı. {Seconds} saniye boyunca yeni sağlayıcı isteği yapılmayacak.", Math.Ceiling(wait.TotalSeconds));
+                return RateLimited<T>(wait);
+            }
+            response.EnsureSuccessStatusCode();
+            var data = await response.Content.ReadFromJsonAsync<T>(ct);
             if (data is null || !isValid(data))
                 throw new JsonException("Dış API yanıtındaki gerekli alanlar eksik.");
 
+            _cache.Store(requestUrl, data, TimeSpan.FromSeconds(Math.Clamp(_settings.CacheSeconds, 1, 3600)));
             return Response<T>.Success(data, 200);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -151,7 +176,14 @@ public class WeatherService : IWeatherService
             _logger.LogWarning(ex, "Open-Meteo verisi alınamadı. Konum: {Location}", locationName);
             return Response<T>.Fail("WeatherProviderUnavailable", errorMessage, 502, true);
         }
+        finally { _cache.RequestGate.Release(); }
     }
+
+    private static Response<T> RateLimited<T>(TimeSpan wait) where T : class => Response<T>.Fail(
+        "WeatherProviderRateLimited",
+        "Hava verisi sağlayıcısının istek sınırına ulaşıldı. Lütfen biraz sonra tekrar deneyin.",
+        new Dictionary<string, string> { ["retryAfterSeconds"] = Math.Ceiling(wait.TotalSeconds).ToString(CultureInfo.InvariantCulture) },
+        503, true);
 
     private static readonly CultureInfo TurkishCulture = CultureInfo.GetCultureInfo("tr-TR");
 }
